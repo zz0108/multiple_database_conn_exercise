@@ -60,11 +60,21 @@
             })
             .then(response => response.json())
             .then(data => {
-                result.innerHTML = `
-                    <div class="alert alert-success">
-                        成功生成 ${data.count} 個會員！
-                    </div>
-                `;
+                if(data.success){
+                    result.innerHTML = `
+                        <div class="alert alert-success">
+                            成功生成 ${data.count} 個會員！
+                        </div>
+                    `;
+                }
+                else{
+                    result.innerHTML = `
+                        <div class="alert alert-warning">
+                            生成失敗：${data.message}
+                        </div>
+                    `;
+                }
+
             })
             .catch(error => {
                 result.innerHTML = `

@@ -18,13 +18,11 @@ namespace MultipleDatabaseConn
                     return email.Length > 50 ? email.Substring(0, 50) : email;
                 })
                 .RuleFor(m => m.Age, f => f.Random.Int(18, 80))
-                // 修改这里：将生成的时间转换为 UTC
                 .RuleFor(m => m.CreatedAt, f => f.Date.PastOffset(2).ToUniversalTime())
                 .RuleFor(m => m.CreatedBy, f => {
                     var createdBy = f.Name.FullName();
                     return createdBy.Length > 20 ? createdBy.Substring(0, 20) : createdBy;
                 })
-                // 修改这里：将生成的时间转换为 UTC
                 .RuleFor(m => m.ChangedAt, f => f.Random.Bool(0.5f) ?
                     f.Date.PastOffset(1).ToUniversalTime() : (DateTimeOffset?)null)
                 .RuleFor(m => m.ChangedBy, (f, m) => {

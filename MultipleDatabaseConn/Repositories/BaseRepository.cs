@@ -3,12 +3,14 @@ using MultipleDatabaseConn.Enum;
 using MultipleDatabaseConn.Models;
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace MultipleDatabaseConn.Repositories
 {
-    public class BaseRepository<T>(IDynamicDbContextFactory<ApplicationDbContext> dynamicDbContextFactory) : IRepository<T> where T : class, IEntity
+    public class BaseRepository<T>(IDynamicDbContextFactory<ApplicationDbContext> dynamicDbContextFactory, IMemoryCache cache, ILogger<BaseRepository<T>> logger) : IRepository<T> where T : class, IEntity
     {
-        public async Task Create(T entity)
+        private readonly string _typeName = typeof(T).Name;
+        public async Task CreateAsync(T entity)
         {
             var serverName = GetServerName(entity.Id);
             var connString = GetConnString(entity.Id);
@@ -17,7 +19,7 @@ namespace MultipleDatabaseConn.Repositories
             await dbContext.SaveChangesAsync();
         }
 
-        public async Task MultipleCreate(List<T> entities)
+        public async Task MultipleCreateAsync(List<T> entities)
         {
             var entityGroups = entities.GroupBy(g => GetLastHex(g.Id));
             foreach (var entityGroup in entityGroups)
@@ -30,7 +32,7 @@ namespace MultipleDatabaseConn.Repositories
             }
         }
 
-        public async Task Update(T entity)
+        public async Task UpdateAsync(T entity)
         {
             var serverName = GetServerName(entity.Id);
             var connString = GetConnString(entity.Id);
@@ -39,7 +41,7 @@ namespace MultipleDatabaseConn.Repositories
             await dbContext.SaveChangesAsync();
         }
 
-        public async Task Delete(T entity)
+        public async Task DeleteAsync(T entity)
         {
             var serverName = GetServerName(entity.Id);
             var connString = GetConnString(entity.Id);
@@ -48,43 +50,103 @@ namespace MultipleDatabaseConn.Repositories
             await dbContext.SaveChangesAsync();
         }
 
-        public async Task<T?> GetById(Guid id)
+        public async Task<T?> GetByIdAsync(Guid id)
         {
-            var serverName = GetServerName(id);
-            var connString = GetConnString(id);
-            await using var dbContext = dynamicDbContextFactory.CreateDbContext(serverName, connString);
-            return await dbContext.Set<T>().FindAsync(id);
+            var cacheKey = GetCacheKey("GetById", id);
+
+            return await cache.GetOrCreateAsync(cacheKey, async entry =>
+            {
+                entry.SetSlidingExpiration(TimeSpan.FromMinutes(30));
+                var serverName = GetServerName(id);
+                var connString = GetConnString(id);
+                await using var dbContext = dynamicDbContextFactory.CreateDbContext(serverName, connString);
+                return await dbContext.Set<T>().FindAsync(id);
+            });
         }
 
-        public async Task<PagedResult<T>> GetAll(int pageNumber, int pageSize)
+        public async Task<PagedResult<T>?> GetAllAsync(int pageNumber, int pageSize)
         {
-            var allEntities = new List<T>();
-            foreach (var serverName in typeof(ServerNames).GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.IgnoreCase)
-                         .Select(f => f.GetValue(null) as string))
+            var cacheKey = GetCacheKey("GetAll", pageNumber, pageSize);
+
+            return await cache.GetOrCreateAsync(cacheKey, async entry =>
             {
-                if (serverName is null)
-                    continue;
+                var databaseCounts = new List<(string Name, string Value, string ConnString, int Count, int StartIndex)>();
+                var totalCount = 0;
 
-                var connString = GetConnString(Guid.NewGuid());
-                await using var dbContext = dynamicDbContextFactory.CreateDbContext(serverName, connString);
-                var entities = await dbContext.Set<T>().ToListAsync();
-                if (entities.Any())
-                    allEntities.AddRange(entities);
-            }
+                entry.SetSlidingExpiration(TimeSpan.FromMinutes(5));
+                try
+                {
+                    foreach (var serverName in typeof(ServerNames)
+                        .GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.IgnoreCase)
+                        .Select(f => new { Name = f.Name, Value = f.GetValue(null) as string }))
+                    {
+                        if (serverName.Value is null)
+                            continue;
+                        var connString = GetGetConnString(serverName.Name);
+                        await using var dbContext = dynamicDbContextFactory.CreateDbContext(serverName.Value, connString);
 
-            var totalCount = allEntities.Count;
-            var items = allEntities
-                .Skip((pageNumber - 1) * pageSize)
-                .Take(pageSize)
-                .ToList();
+                        var count = await dbContext.Set<T>().CountAsync();
+                        databaseCounts.Add((serverName.Name, serverName.Value, connString, count, totalCount));
+                        totalCount += count;
+                    }
 
-            return new PagedResult<T>
-            {
-                Items = items,
-                TotalCount = totalCount,
-                PageNumber = pageNumber,
-                PageSize = pageSize
-            };
+                    var startIndex = (pageNumber - 1) * pageSize;
+                    var items = new List<T>();
+
+                    foreach (var db in databaseCounts)
+                    {
+                        if (startIndex >= db.StartIndex + db.Count ||
+                            startIndex + pageSize <= db.StartIndex)
+                        {
+                            continue;
+                        }
+
+                        var localSkip = Math.Max(0, startIndex - db.StartIndex);
+
+                        var localTake = Math.Min(
+                            pageSize - items.Count,
+                            db.Count - localSkip
+                        );
+
+                        if (localTake <= 0) continue;
+
+                        await using var dbContext = dynamicDbContextFactory.CreateDbContext(db.Value, db.ConnString);
+                        var currentItems = await dbContext.Set<T>()
+                            .Skip(localSkip)
+                            .Take(localTake)
+                            .ToListAsync();
+
+                        items.AddRange(currentItems);
+
+                        if (items.Count >= pageSize)
+                            break;
+                    }
+
+                    return new PagedResult<T>
+                    {
+                        Items = items,
+                        TotalCount = totalCount,
+                        PageNumber = pageNumber,
+                        PageSize = pageSize
+                    };
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "取得所有資料時發生錯誤");
+                    return new PagedResult<T>
+                    {
+                        Items = [],
+                        TotalCount = totalCount,
+                        PageNumber = pageNumber,
+                        PageSize = pageSize
+                    }; ;
+                }
+            });
+        }
+
+        private string GetCacheKey(string operation, params object[] parameters)
+        {
+            return $"{_typeName}_{operation}_{string.Join("_", parameters)}";
         }
 
         private string GetServerName(Guid id)
@@ -102,6 +164,15 @@ namespace MultipleDatabaseConn.Repositories
         {
             var connStringName = $"X0{GetLastHex(id)}";
 
+            var connString = typeof(Conn)
+                .GetField(connStringName, BindingFlags.Public | BindingFlags.Static | BindingFlags.IgnoreCase)
+                ?.GetValue(null) as string;
+
+            return connString ?? throw new InvalidOperationException("Conn String cannot be null");
+        }
+
+        private string GetGetConnString(string connStringName)
+        {
             var connString = typeof(Conn)
                 .GetField(connStringName, BindingFlags.Public | BindingFlags.Static | BindingFlags.IgnoreCase)
                 ?.GetValue(null) as string;

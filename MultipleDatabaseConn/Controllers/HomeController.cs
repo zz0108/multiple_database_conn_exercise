@@ -23,7 +23,7 @@ namespace MultipleDatabaseConn.Controllers
                 var members = MemberFaker.GenerateMembers(count);
 
                 // 加入到資料庫
-                await memberRepository.MultipleCreate(members);
+                await memberRepository.MultipleCreateAsync(members);
 
                 return Json(new { success = true, count = members.Count });
             }
@@ -44,7 +44,7 @@ namespace MultipleDatabaseConn.Controllers
                     return Json(new { success = false, message = "無效的會員 ID" });
                 }
 
-                var member = await memberRepository.GetById(memberId);
+                var member = await memberRepository.GetByIdAsync(memberId);
 
                 if (member == null)
                 {
@@ -61,7 +61,7 @@ namespace MultipleDatabaseConn.Controllers
 
         public async Task<IActionResult> AllMember(int pageNumber = 1, int pageSize = 10)
         {
-            var pagedResult = await memberRepository.GetAll(pageNumber, pageSize);
+            var pagedResult = await memberRepository.GetAllAsync(pageNumber, pageSize);
 
             if (Request.Headers["X-Requested-With"] == "XMLHttpRequest")
             {
