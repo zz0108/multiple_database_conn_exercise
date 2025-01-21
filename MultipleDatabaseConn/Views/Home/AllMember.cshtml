@@ -1,0 +1,152 @@
+﻿@model PagedResult<Member>
+@{
+    ViewData["Title"] = "會員列表";
+}
+
+<div class="container mt-4" id="memberListContainer">
+    <h1 class="mb-4">@ViewData["Title"]</h1>
+    <div class="card">
+        <div class="card-body">
+            @await Html.PartialAsync("_MemberList", Model)
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function() {
+            // 分頁點擊處理
+            function handlePagination(e) {
+                e.preventDefault();
+                var $link = $(this);
+                var page = $link.data('page');
+
+                if ($link.parent().hasClass('disabled') || !page) {
+                    return;
+                }
+
+                loadPage(page);
+            }
+
+            function loadPage(page) {
+                var pageSize = @Model.PageSize;
+                var $container = $('.card-body');
+
+                $container.addClass('loading').css('opacity', '0.6');
+
+                $.ajax({
+                    url: '@Url.Action("Privacy")',
+                    type: 'GET',
+                    data: {
+                        pageNumber: page,
+                        pageSize: pageSize
+                    },
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    success: function(result) {
+                        $container.html(result);
+                        // 重新綁定事件
+                        bindEvents();
+                        // 更新 URL
+                        updateUrl(page, pageSize);
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('載入資料失敗:', error);
+                        alert('載入資料時發生錯誤，請稍後再試。');
+                    },
+                    complete: function() {
+                        $container.removeClass('loading').css('opacity', '');
+                    }
+                });
+            }
+
+            function updateUrl(page, pageSize) {
+                var url = new URL(window.location.href);
+                url.searchParams.set('pageNumber', page);
+                url.searchParams.set('pageSize', pageSize);
+                window.history.pushState({}, '', url);
+            }
+
+            // 表格排序功能
+            function handleSort() {
+                var $th = $(this);
+                var $table = $th.closest('table');
+                var index = $th.index();
+                var sortType = $th.data('sort');
+                var isAsc = $th.hasClass('asc');
+
+                // 移除其他列的排序狀態
+                $th.siblings().removeClass('asc desc');
+
+                // 切換當前列的排序狀態
+                $th.toggleClass('asc', !isAsc).toggleClass('desc', isAsc);
+
+                var rows = $table.find('tbody tr').toArray().sort(function(a, b) {
+                    return compareValues(a, b, index, sortType, !isAsc);
+                });
+
+                $table.find('tbody').empty().append(rows);
+            }
+
+            function compareValues(a, b, index, sortType, asc) {
+                var $a = $(a).children().eq(index);
+                var $b = $(b).children().eq(index);
+
+                var aValue = sortType === 'date' ?
+                    Number($a.data('date')) :
+                    $a.text().trim();
+                var bValue = sortType === 'date' ?
+                    Number($b.data('date')) :
+                    $b.text().trim();
+
+                if (sortType === 'number') {
+                    aValue = aValue === '-' ? 0 : Number(aValue);
+                    bValue = bValue === '-' ? 0 : Number(bValue);
+                    return asc ? aValue - bValue : bValue - aValue;
+                }
+
+                if (sortType === 'date') {
+                    return asc ? aValue - bValue : bValue - aValue;
+                }
+
+                return asc ?
+                    aValue.localeCompare(bValue) :
+                    bValue.localeCompare(aValue);
+            }
+
+            function bindEvents() {
+                $('.pagination .page-link[data-page]').off('click').on('click', handlePagination);
+                $('#memberTable th').off('click').on('click', handleSort);
+            }
+
+            // 初始綁定事件
+            bindEvents();
+
+            // 添加排序指示器的樣式
+            $('<style>')
+                .text(`
+                    #memberTable th {
+                        cursor: pointer;
+                        position: relative;
+                        padding-right: 20px;
+                    }
+                    #memberTable th:after {
+                        content: '⇅';
+                        position: absolute;
+                        right: 5px;
+                        opacity: 0.2;
+                    }
+                    #memberTable th.asc:after {
+                        content: '↑';
+                        opacity: 1;
+                    }
+                    #memberTable th.desc:after {
+                        content: '↓';
+                        opacity: 1;
+                    }
+                `)
+                .appendTo('head');
+        });
+    </script>
+}

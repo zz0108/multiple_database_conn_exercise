@@ -1,0 +1,137 @@
+﻿@{
+    ViewData["Title"] = "Home Page";
+}
+<div class="text-center">
+    <h1 class="display-4">Welcome</h1>
+    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+    <div class="container mt-4">
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <!-- 生成會員卡片 -->
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h5 class="card-title">生成測試會員資料</h5>
+                        <div class="form-group mb-3">
+                            <label for="memberCount">要生成的會員數量：</label>
+                            <input type="number" class="form-control" id="memberCount" min="1" max="100" value="1">
+                        </div>
+                        <button class="btn btn-primary" id="generateMembers" onclick="generateMembers()">
+                            生成會員
+                        </button>
+                        <div id="result" class="mt-3"></div>
+                    </div>
+                </div>
+
+                <!-- 搜尋會員卡片 -->
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">搜尋會員</h5>
+                        <div class="form-group mb-3">
+                            <label for="memberId">會員 ID：</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="memberId" placeholder="請輸入會員 ID">
+                                <button class="btn btn-secondary" id="searchMember" onclick="searchMember()">
+                                    搜尋
+                                </button>
+                            </div>
+                        </div>
+                        <div id="searchResult" class="mt-3">
+                            <!-- 搜尋結果會顯示在這裡 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        function generateMembers() {
+            const count = document.getElementById('memberCount').value;
+            const button = document.getElementById('generateMembers');
+            const result = document.getElementById('result');
+
+            button.disabled = true;
+            button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 生成中...';
+
+            fetch(`/Home/GenerateMembers?count=${count}`, {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                result.innerHTML = `
+                    <div class="alert alert-success">
+                        成功生成 ${data.count} 個會員！
+                    </div>
+                `;
+            })
+            .catch(error => {
+                result.innerHTML = `
+                    <div class="alert alert-danger">
+                        生成失敗：${error.message}
+                    </div>
+                `;
+            })
+            .finally(() => {
+                button.disabled = false;
+                button.innerHTML = '生成會員';
+            });
+        }
+
+        function searchMember() {
+            const memberId = document.getElementById('memberId').value;
+            const button = document.getElementById('searchMember');
+            const searchResult = document.getElementById('searchResult');
+
+            if (!memberId) {
+                searchResult.innerHTML = `
+                    <div class="alert alert-warning">
+                        請輸入會員 ID
+                    </div>
+                `;
+                return;
+            }
+
+            button.disabled = true;
+            button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 搜尋中...';
+
+            fetch(`/Home/GetMember/${memberId}`, {
+                method: 'GET'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.member) {
+                    searchResult.innerHTML = `
+                        <div class="card">
+                            <div class="card-body">
+                                <h6>會員資料：</h6>
+                                <p class="mb-1"><strong>姓名：</strong> ${data.member.name}</p>
+                                <p class="mb-1"><strong>Email：</strong> ${data.member.email}</p>
+                                <p class="mb-1"><strong>年齡：</strong> ${data.member.age}</p>
+                                <p class="mb-0"><strong>建立時間：</strong> ${new Date(data.member.createdAt).toLocaleString()}</p>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    searchResult.innerHTML = `
+                        <div class="alert alert-warning">
+                            找不到此會員
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                searchResult.innerHTML = `
+                    <div class="alert alert-danger">
+                        搜尋失敗：${error.message}
+                    </div>
+                `;
+            })
+            .finally(() => {
+                button.disabled = false;
+                button.innerHTML = '搜尋';
+            });
+        }
+    </script>
+}
