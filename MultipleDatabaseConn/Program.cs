@@ -1,4 +1,5 @@
 using System.Reflection;
+using Microsoft.Extensions.Configuration;
 using MultipleDatabaseConn.Data;
 using MultipleDatabaseConn.Enum;
 using MultipleDatabaseConn.Models;
@@ -28,7 +29,7 @@ namespace MultipleDatabaseConn
                     ));
                 return connectionStringProvider;
             });
-
+            builder.Services.Configure<DbContextOptions>(builder.Configuration.GetSection("DbContextOptions"));
             builder.Services.AddScoped<IMemberRepository, MemberRepository>();
             builder.Services.AddScoped(typeof(IRepository<>), typeof(BaseRepository<>));
 
