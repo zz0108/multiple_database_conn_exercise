@@ -1,19 +1,18 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.ApplicationInsights;
+using Microsoft.EntityFrameworkCore;
 using MultipleDatabaseConn.Models;
 
 namespace MultipleDatabaseConn.Data
 {
     public class ApplicationDbContext : DynamicDbContext
     {
-        private readonly string _connectionString;
+        private readonly string? _connectionString;
 
-        // 加入這個建構函式來支援 pooling
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
             : base(options)
         {
         }
 
-        // 原本的建構函式
         public ApplicationDbContext(string connectionString)
             : base()
         {
@@ -22,7 +21,7 @@ namespace MultipleDatabaseConn.Data
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
-            if (!optionsBuilder.IsConfigured)  // 只有在沒有配置時才設定連線字串
+            if (!optionsBuilder.IsConfigured)
             {
                 optionsBuilder.UseNpgsql(_connectionString);
             }

@@ -60,7 +60,7 @@ namespace MultipleDatabaseConn.Repositories
                 var serverName = GetServerName(id);
                 var connString = GetConnString(id);
                 await using var dbContext = dynamicDbContextFactory.CreateDbContext(serverName, connString);
-                return await dbContext.Set<T>().FindAsync(id);
+                return await dbContext.Set<T>().AsNoTracking().FirstOrDefaultAsync(f => f.Id == id);
             });
         }
 
@@ -85,7 +85,7 @@ namespace MultipleDatabaseConn.Repositories
                         var connString = GetGetConnString(serverName.Name);
                         await using var dbContext = dynamicDbContextFactory.CreateDbContext(serverName.Value, connString);
 
-                        var count = await dbContext.Set<T>().CountAsync();
+                        var count = await dbContext.Set<T>().AsNoTracking().CountAsync();
                         databaseCounts.Add((serverName.Name, serverName.Value, connString, count, totalCount));
                         totalCount += count;
                     }
@@ -112,6 +112,7 @@ namespace MultipleDatabaseConn.Repositories
 
                         await using var dbContext = dynamicDbContextFactory.CreateDbContext(db.Value, db.ConnString);
                         var currentItems = await dbContext.Set<T>()
+                            .AsNoTracking()
                             .Skip(localSkip)
                             .Take(localTake)
                             .ToListAsync();
